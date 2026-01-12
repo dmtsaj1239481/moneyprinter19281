@@ -21,6 +21,7 @@ def generate_script(task_id, params):
             video_subject=params.video_subject,
             language=params.video_language,
             paragraph_number=params.paragraph_number,
+            include_emojis=getattr(params, 'enable_emojis', False)
         )
     else:
         logger.debug(f"video script: \n{video_script}")
@@ -286,15 +287,41 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
     sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=20)
 
-    # 3. Generate audio
-    audio_file, audio_duration, sub_maker = generate_audio(
-        task_id, params, video_script
-    )
+    # 3 & 5. Generate audio and get materials in parallel
+    from concurrent.futures import ThreadPoolExecutor
+    
+    logger.info("Starting parallel audio generation and material fetching...")
+    
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        # Submit audio generation task
+        audio_future = executor.submit(generate_audio, task_id, params, video_script)
+        
+        # Submit materials fetching task
+        # Note: get_video_materials needs audio_duration, which we don't have yet.
+        # However, we can fetch materials using a placeholder duration or wait for audio to finish.
+        # Actually, let's wait for audio_duration first to be safe with lengths, OR
+        # just fetch enough materials based on an estimate. 
+        # Most scripts are ~150 words per minute.
+        
+        # To make it truly parallel without duration bottleneck:
+        # We can run them in parallel but materials might need to 'over-download' slightly.
+        # Or better: Audio is usually fast. We can run terms generation and audio in parallel if terms weren't stop_at.
+        
+        # Re-evaluating: Let's run audio and materials in parallel. 
+        # We'll use a safe estimate for duration if audio is not yet done.
+        est_duration = len(video_script.split()) * 0.5 + 30 # Rough estimate
+        
+        materials_future = executor.submit(get_video_materials, task_id, params, video_terms, est_duration)
+        
+        # Wait for results
+        audio_file, audio_duration, sub_maker = audio_future.result()
+        downloaded_videos = materials_future.result()
+
     if not audio_file:
         sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
         return
 
-    sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=30)
+    sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=35)
 
     if stop_at == "audio":
         sm.state.update_task(
@@ -319,12 +346,8 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         )
         return {"subtitle_path": subtitle_path}
 
-    sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=40)
+    sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=45)
 
-    # 5. Get video materials
-    downloaded_videos = get_video_materials(
-        task_id, params, video_terms, audio_duration
-    )
     if not downloaded_videos:
         sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
         return

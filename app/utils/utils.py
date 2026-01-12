@@ -228,3 +228,20 @@ def load_locales(i18n_dir):
 
 def parse_extension(filename):
     return Path(filename).suffix.lower().lstrip('.')
+
+
+def has_gpu():
+    """
+    Check if a GPU is available for video encoding using nvidia-smi.
+    """
+    import shutil
+    import subprocess
+    
+    if shutil.which("nvidia-smi"):
+        try:
+            # Check if we can actually run a command and it returns 0
+            subprocess.check_output(["nvidia-smi"], stderr=subprocess.STDOUT)
+            return True
+        except Exception:
+            return False
+    return False

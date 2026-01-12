@@ -46,6 +46,13 @@ def get_quality_params(params: VideoParams = None):
     res_bitrate = "8000k"
     res_preset = "medium"
     res_crf = 18
+    
+    use_gpu = utils.has_gpu()
+    codec = "h264_nvenc" if use_gpu else "libx264"
+    if use_gpu:
+        logger.info("🚀 GPU detected! Using hardware acceleration (h264_nvenc) for ultra-fast rendering.")
+    else:
+        logger.info("💻 Using CPU for rendering (libx264).")
 
     if params:
         if hasattr(params, "video_fps") and params.video_fps:
@@ -54,27 +61,41 @@ def get_quality_params(params: VideoParams = None):
         quality = getattr(params, "video_quality", "1080p")
         if quality == "2k":
             res_bitrate = "12000k"
-            res_preset = "slow" # Higher quality needs more time
+            res_preset = "slow" if not use_gpu else "p6" # slow for cpu, p6 for nvenc
         elif quality == "1080p":
             res_bitrate = "8000k"
-            res_preset = "medium"
+            res_preset = "medium" if not use_gpu else "p4"
         elif quality == "720p":
             res_bitrate = "4000k"
-            res_preset = "fast"
+            res_preset = "fast" if not use_gpu else "p2"
         
         # Override preset if it's very high fps
-        if res_fps > 30:
+        if res_fps > 30 and not use_gpu:
             res_preset = "veryfast"
 
-    q_params = [
-        "-crf", str(res_crf),
-        "-preset", res_preset,
-        "-profile:v", "high",
-        "-level", "4.1",
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart"
-    ]
-    return res_fps, res_bitrate, q_params
+    if use_gpu:
+        # NVENC specific parameters
+        q_params = [
+            "-preset", res_preset,
+            "-pixel_format", "yuv420p",
+            "-profile:v", "high",
+            "-rc:v", "vbr",
+            "-cq:v", str(res_crf),
+            "-b:v", res_bitrate,
+            "-maxrate:v", res_bitrate,
+            "-bufsize:v", str(int(res_bitrate.replace('k',''))*2) + "k"
+        ]
+    else:
+        # Standard libx264 parameters
+        q_params = [
+            "-crf", str(res_crf),
+            "-preset", res_preset,
+            "-profile:v", "high",
+            "-level", "4.1",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart"
+        ]
+    return res_fps, res_bitrate, q_params, codec
 
 class SubClippedVideoClip:
     def __init__(self, file_path, start_time=None, end_time=None, width=None, height=None, duration=None):
@@ -175,7 +196,7 @@ def combine_videos(
     req_dur = max_clip_duration
     logger.info(f"maximum clip duration: {req_dur} seconds")
     output_dir = os.path.dirname(combined_video_path)
-    fps, bitrate, quality_params = get_quality_params(params)
+    fps, bitrate, quality_params, video_codec = get_quality_params(params)
 
     aspect = VideoAspect(video_aspect)
     video_width, video_height = aspect.to_resolution(quality=getattr(params, "video_quality", "1080p"))
@@ -503,7 +524,7 @@ def combine_videos(
             audio_codec=audio_codec,
             fps=fps,
             codec=video_codec,
-            bitrate=video_bitrate,
+            bitrate=bitrate,
             audio_bitrate=audio_bitrate,
             ffmpeg_params=quality_params
         )
@@ -552,6 +573,7 @@ def _progressive_merge_fallback(processed_clips, combined_video_path, output_dir
             merged_clip = concatenate_videoclips([base_clip, next_clip])
 
             # save merged result to temp file
+            fps, bitrate, quality_params, video_codec = get_quality_params()
             merged_clip.write_videofile(
                 filename=temp_merged_next,
                 threads=threads,
@@ -560,7 +582,7 @@ def _progressive_merge_fallback(processed_clips, combined_video_path, output_dir
                 audio_codec=audio_codec,
                 fps=fps,
                 codec=video_codec,
-                bitrate=video_bitrate,
+                bitrate=bitrate,
                 audio_bitrate=audio_bitrate,
                 ffmpeg_params=quality_params
             )
@@ -770,25 +792,38 @@ def create_enhanced_subtitle_clips(enhanced_subtitle_path, params, video_width, 
             
             # Center the line
             x_pos = (img_width - line_width) // 2
-            x_pos = max(20, x_pos)  # Ensure minimum padding
+            x_pos = max(20, x_pos)
             
             for word in words:
-                # Determine color for this word
-                word_color = highlight_rgb if word_index in highlighted_word_indices else normal_rgb
+                is_highlighted = word_index in highlighted_word_indices
                 
-                # Draw word with stroke if specified
+                # Hormozi style settings
+                display_font = font
+                word_color = highlight_rgb if is_highlighted else normal_rgb
+                
+                if getattr(params, 'hormozi_style', False) and is_highlighted:
+                    # Make highlighted word slightly larger and use yellow if not specified
+                    try:
+                        hormozi_font_size = int(font_size * 1.15)
+                        display_font = ImageFont.truetype(font_path, hormozi_font_size)
+                    except:
+                        pass
+                    # If user hasn't changed default red highlight, use Hormozi yellow
+                    if highlight_color.lower() == "#ff0000":
+                        word_color = (255, 255, 0) # Iconic Yellow
+                
+                # Draw stroke
                 if stroke_rgb and stroke_width > 0:
-                    # Draw stroke by drawing text multiple times with offset
                     stroke_w = int(stroke_width)
                     for dx in range(-stroke_w, stroke_w + 1):
                         for dy in range(-stroke_w, stroke_w + 1):
                             if dx != 0 or dy != 0:
-                                draw.text((x_pos + dx, y_pos + dy), word, font=font, fill=stroke_rgb)
+                                draw.text((x_pos + dx, y_pos + dy), word, font=display_font, fill=stroke_rgb)
                 
                 # Draw main text
-                draw.text((x_pos, y_pos), word, font=font, fill=word_color)
+                draw.text((x_pos, y_pos), word, font=display_font, fill=word_color)
                 
-                # Calculate next position
+                # Calculate next position using normal font to keep spacing consistent
                 word_bbox = font.getbbox(word + ' ')
                 x_pos += word_bbox[2] - word_bbox[0]
                 word_index += 1
@@ -879,7 +914,7 @@ def generate_video(
     output_file: str,
     params: VideoParams,
 ):
-    fps, bitrate, quality_params = get_quality_params(params)
+    fps, bitrate, quality_params, video_codec = get_quality_params(params)
     aspect = VideoAspect(params.video_aspect)
     video_width, video_height = aspect.to_resolution(quality=getattr(params, "video_quality", "1080p"))
 

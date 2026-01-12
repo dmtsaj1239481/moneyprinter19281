@@ -1255,11 +1255,29 @@ with right_panel:
                 tr("Max Lines Per Subtitle"), 1, 4, saved_max_lines_per_subtitle
             )
             config.ui["max_lines_per_subtitle"] = params.max_lines_per_subtitle
+            
+            # Hormozi Style
+            params.hormozi_style = st.checkbox(
+                tr("Hormozi Style (Big, Bold, Yellow Highlight)"),
+                value=config.ui.get("hormozi_style", False),
+                help="Inspired by Alex Hormozi's shorts. Best used with Portrait ratio."
+            )
+            config.ui["hormozi_style"] = params.hormozi_style
         else:
             # Set default values when word highlighting is disabled
             params.word_highlight_color = config.ui.get("highlight_color", "#ff0000")
             params.max_chars_per_line = config.ui.get("max_chars_per_line", 40)
             params.max_lines_per_subtitle = config.ui.get("max_lines_per_subtitle", 2)
+            params.hormozi_style = False
+
+        # Visual enhancements
+        st.write(f"**{tr('Visual Enhancements')}**")
+        params.enable_emojis = st.checkbox(
+            tr("Enable AI Emojis in Script"),
+            value=config.ui.get("enable_emojis", False),
+            help="AI will automatically add relevant emojis to your video script."
+        )
+        config.ui["enable_emojis"] = params.enable_emojis
 
 start_button = st.button(tr("Generate Video"), use_container_width=True, type="primary")
 if start_button:
