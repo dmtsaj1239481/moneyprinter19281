@@ -22,7 +22,7 @@ from app.models.schema import (
     VideoParams,
     VideoTransitionMode,
 )
-from app.services import llm, voice
+from app.services import llm, voice, lite_engine
 from app.services import task as tm
 from app.utils import utils
 
@@ -199,7 +199,12 @@ def tr(key):
     return loc.get("Translation", {}).get(key, key)
 
 
-# 创建基础设置折叠框
+# Create Tabs for Standard and Lite Engine
+main_tabs = st.tabs(["🚀 Standard Engine", "⚡ Lite Engine (Fast)"])
+
+with main_tabs[0]:
+    # --- STANDARD ENGINE UI ---
+    # 创建基础设置折叠框
 if not config.app.get("hide_config", False):
     with st.expander(tr("Basic Settings"), expanded=False):
         config_panels = st.columns(3)
@@ -232,6 +237,7 @@ if not config.app.get("hide_config", False):
                 "Qwen",
                 "DeepSeek",
                 "Gemini",
+                "OpenRouter",
                 "Ollama",
                 "G4f",
                 "OneAPI",
@@ -264,6 +270,18 @@ if not config.app.get("hide_config", False):
             llm_account_id = config.app.get(f"{llm_provider}_account_id", "")
 
             tips = ""
+            if llm_provider == "openrouter":
+                if not llm_model_name:
+                    llm_model_name = "mistralai/mistral-7b-instruct:free"
+                if not llm_base_url:
+                    llm_base_url = "https://openrouter.ai/api/v1"
+                with llm_helper:
+                    tips = """
+                            ##### OpenRouter Configuration
+                            - **API Key**: [Get from OpenRouter](https://openrouter.ai/keys)
+                            - **Base Url**: Default is https://openrouter.ai/api/v1
+                            - **Model Name**: Use any OpenRouter model string (e.g., `mistralai/mistral-7b-instruct:free`)
+                            """
             if llm_provider == "ollama":
                 if not llm_model_name:
                     llm_model_name = "qwen:7b"
@@ -847,7 +865,7 @@ with middle_panel:
 
         # 添加TTS服务器选择下拉框
         tts_servers = [
-            ("azure-tts-v1", "Azure TTS V1"),
+            ("azure-tts-v1", "Edge TTS (Default)"),
             ("azure-tts-v2", "Azure TTS V2"),
             ("siliconflow", "SiliconFlow TTS"),
             ("chatterbox", "Chatterbox TTS (Open Source)"),
@@ -1276,5 +1294,70 @@ if start_button:
     open_task_folder(task_id)
     logger.info(tr("Video Generation Completed"))
     scroll_to_bottom()
+
+with main_tabs[1]:
+    # --- LITE ENGINE UI ---
+    st.header("⚡ MoneyPrinter Turbo - Lite")
+    st.info("This is a simplified, high-speed engine that uses standard Edge-TTS and ultrafast rendering for quick previews and simple videos.")
+    
+    with st.container(border=True):
+        st.subheader("🔑 API Configuration")
+        l_col1, l_col2 = st.columns(2)
+        with l_col1:
+            lite_gemini_key = st.text_input("Gemini API Key", value=config.app.get("gemini_api_key", ""), type="password")
+            lite_pexels_key = st.text_input("Pexels API Key", value=config.app.get("pexels_api_keys", [""])[0], type="password")
+        with l_col2:
+            lite_openrouter_key = st.text_input("OpenRouter API Key", value=config.app.get("openrouter_api_key", ""), type="password")
+        
+        lite_llm_provider = st.selectbox("LLM Provider (for keywords)", options=["Gemini", "OpenRouter", "OpenAI"], index=0)
+    
+    lite_subject = st.text_input("Video Subject (Optional, for keywords)", value="")
+    lite_script = st.text_area("Video Script", placeholder="Enter your script here...", height=200)
+    
+    with st.expander("🎨 Style & Voice Settings", expanded=True):
+        ls_col1, ls_col2, ls_col3 = st.columns(3)
+        with ls_col1:
+            # We filter for some popular edge voices
+            lite_voice = st.selectbox("Voice", options=["en-US-GuyNeural", "en-US-JennyNeural", "en-GB-SoniaNeural", "en-GB-RyanNeural", "es-MX-JorgeNeural", "hi-IN-MadhurNeural"], index=0)
+            lite_aspect = st.radio("Video Aspect", options=["landscape", "portrait"], index=0)
+        with ls_col2:
+            lite_rate = st.slider("Speech Rate (x)", 0.5, 2.0, 1.0, 0.1)
+        with ls_col3:
+            lite_pitch = st.slider("Pitch (Hz)", -50, 50, 0, 1)
+
+    if st.button("🚀 GENERATE LITE VIDEO", type="primary"):
+        if not lite_script:
+            st.error("Please enter a script first.")
+        elif not lite_pexels_key:
+            st.error("Pexels API Key is required.")
+        else:
+            # Update temporary config for the generator
+            config.app["llm_provider"] = lite_llm_provider.lower()
+            config.app["gemini_api_key"] = lite_gemini_key
+            config.app["openrouter_api_key"] = lite_openrouter_key
+            config.app["pexels_api_keys"] = [lite_pexels_key]
+            
+            lite_log_container = st.empty()
+            lite_video_container = st.empty()
+            
+            async def run_lite():
+                full_logs = ""
+                async for result, log in lite_engine.generate_lite_video(
+                    video_subject=lite_subject,
+                    video_script=lite_script,
+                    voice_name=lite_voice,
+                    video_aspect=lite_aspect,
+                    voice_rate=lite_rate,
+                    voice_pitch=lite_pitch,
+                    pexels_api_key=lite_pexels_key
+                ):
+                    full_logs = log # The generator returns the full log string
+                    lite_log_container.code(full_logs)
+                    if result and os.path.exists(result):
+                        lite_video_container.video(result)
+                        st.success("Lite Video Generated Successfully!")
+            
+            import asyncio
+            asyncio.run(run_lite())
 
 config.save_config()

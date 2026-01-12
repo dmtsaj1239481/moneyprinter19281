@@ -83,6 +83,10 @@ def _generate_response(prompt: str) -> str:
                     raise ValueError(
                         f"{llm_provider}: secret_key is not set, please set it in the config.toml file."
                     )
+            elif llm_provider == "openrouter":
+                api_key = config.app.get("openrouter_api_key")
+                model_name = config.app.get("openrouter_model_name")
+                base_url = config.app.get("openrouter_base_url", "https://openrouter.ai/api/v1")
             elif llm_provider == "pollinations":
                 try:
                     base_url = config.app.get("pollinations_base_url", "")
