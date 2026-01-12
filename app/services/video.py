@@ -39,23 +39,42 @@ from app.services import semantic_video
 # High-quality video encoding settings
 audio_codec = "aac"
 video_codec = "libx264"
-fps = 30
 
-# High-quality encoding parameters
-video_bitrate = "8000k"  # High bitrate for excellent quality
-audio_bitrate = "320k"   # High audio bitrate
-crf = 18                 # Constant Rate Factor - lower = higher quality (18-23 is excellent range)
-preset = "medium"        # Balance between encoding speed and compression efficiency
+def get_quality_params(params: VideoParams = None):
+    # Default high quality settings
+    res_fps = 30
+    res_bitrate = "8000k"
+    res_preset = "medium"
+    res_crf = 18
 
-# FFmpeg parameters for maximum quality
-quality_params = [
-    "-crf", str(crf),
-    "-preset", preset,
-    "-profile:v", "high",
-    "-level", "4.1",
-    "-pix_fmt", "yuv420p",
-    "-movflags", "+faststart"
-]
+    if params:
+        if hasattr(params, "video_fps") and params.video_fps:
+            res_fps = params.video_fps
+        
+        quality = getattr(params, "video_quality", "1080p")
+        if quality == "2k":
+            res_bitrate = "12000k"
+            res_preset = "slow" # Higher quality needs more time
+        elif quality == "1080p":
+            res_bitrate = "8000k"
+            res_preset = "medium"
+        elif quality == "720p":
+            res_bitrate = "4000k"
+            res_preset = "fast"
+        
+        # Override preset if it's very high fps
+        if res_fps > 30:
+            res_preset = "veryfast"
+
+    q_params = [
+        "-crf", str(res_crf),
+        "-preset", res_preset,
+        "-profile:v", "high",
+        "-level", "4.1",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart"
+    ]
+    return res_fps, res_bitrate, q_params
 
 class SubClippedVideoClip:
     def __init__(self, file_path, start_time=None, end_time=None, width=None, height=None, duration=None):
@@ -156,9 +175,10 @@ def combine_videos(
     req_dur = max_clip_duration
     logger.info(f"maximum clip duration: {req_dur} seconds")
     output_dir = os.path.dirname(combined_video_path)
+    fps, bitrate, quality_params = get_quality_params(params)
 
     aspect = VideoAspect(video_aspect)
-    video_width, video_height = aspect.to_resolution()
+    video_width, video_height = aspect.to_resolution(quality=getattr(params, "video_quality", "1080p"))
 
     # Check if semantic mode is enabled
     if video_concat_mode.value == "semantic" and script:
@@ -272,7 +292,7 @@ def combine_videos(
                     logger=None, 
                     fps=fps, 
                     codec=video_codec,
-                    bitrate=video_bitrate,
+                    bitrate=bitrate,
                     audio_bitrate=audio_bitrate,
                     ffmpeg_params=quality_params
                 )
@@ -375,7 +395,7 @@ def combine_videos(
                     logger=None, 
                     fps=fps, 
                     codec=video_codec,
-                    bitrate=video_bitrate,
+                    bitrate=bitrate,
                     audio_bitrate=audio_bitrate,
                     ffmpeg_params=quality_params
                 )
@@ -859,8 +879,9 @@ def generate_video(
     output_file: str,
     params: VideoParams,
 ):
+    fps, bitrate, quality_params = get_quality_params(params)
     aspect = VideoAspect(params.video_aspect)
-    video_width, video_height = aspect.to_resolution()
+    video_width, video_height = aspect.to_resolution(quality=getattr(params, "video_quality", "1080p"))
 
     logger.info(f"generating video: {video_width} x {video_height}")
     logger.info(f"  ① video: {video_path}")
@@ -994,7 +1015,7 @@ def generate_video(
         logger=None,
         fps=fps,
         codec=video_codec,
-        bitrate=video_bitrate,
+        bitrate=bitrate,
         audio_bitrate=audio_bitrate,
         ffmpeg_params=quality_params
     )
@@ -1044,11 +1065,10 @@ def preprocess_video(materials: List[MaterialInfo], clip_duration=4):
             video_file = f"{material.url}.mp4"
             final_clip.write_videofile(
                 video_file, 
-                fps=30, 
+                fps=fps, 
                 logger=None,
                 codec=video_codec,
-                bitrate=video_bitrate,
-                audio_bitrate=audio_bitrate,
+                bitrate=bitrate,
                 ffmpeg_params=quality_params
             )
             close_clip(clip)

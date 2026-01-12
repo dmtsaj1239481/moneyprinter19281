@@ -856,6 +856,47 @@ with middle_panel:
             index=0,
         )
         
+        # Video Quality & FPS settings
+        st.write("---")
+        st.write(f"**{tr('Video Quality & Performance')}**")
+        
+        quality_options = [
+            ("2K (Ultra HD - Slowest)", "2k"),
+            ("1080p (Full HD - High Quality)", "1080p"),
+            ("720p (HD - Fast)", "720p"),
+        ]
+        
+        selected_q_idx = st.selectbox(
+            tr("Internal Rendering Quality"),
+            options=range(len(quality_options)),
+            format_func=lambda x: quality_options[x][0],
+            index=1 # Default 1080p
+        )
+        params.video_quality = quality_options[selected_q_idx][1]
+        
+        fps_options = [30, 60]
+        params.video_fps = st.select_slider(
+            tr("Frames Per Second (FPS)"),
+            options=fps_options,
+            value=30,
+            help="60fps gives smoother video but doubles the rendering time."
+        )
+        
+        # Estimated time calculation
+        script_len = len(params.video_script.split()) if params.video_script else 0
+        est_scenes = max(1, script_len // 15) # Roughly 1 scene per 15 words
+        
+        # Base multiplier based on quality and fps
+        base_sec_per_scene = 10 # 10s for 1080p 30fps
+        if params.video_quality == "2k": base_sec_per_scene = 25
+        if params.video_quality == "720p": base_sec_per_scene = 5
+        if params.video_fps == 60: base_sec_per_scene *= 1.8
+        
+        total_est_sec = est_scenes * base_sec_per_scene * params.video_count
+        est_min = max(1, round(total_est_sec / 60))
+        
+        st.metric(label=tr("Estimated Generation Time"), value=f"~{est_min} {tr('Minutes')}", help="Based on script length and quality settings. Colab T4 speeds may vary.")
+
         # Show warning for multiple videos with semantic mode
         if params.video_count > 1 and params.video_concat_mode.value == "semantic":
             st.warning("⚠️ **Multiple Videos + Semantic Mode**: When generating multiple videos, the system will automatically use **Random** concatenation mode instead of Semantic mode to ensure video variety. Semantic mode would produce identical videos, which is not useful for multiple generation.")

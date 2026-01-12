@@ -33,14 +33,23 @@ class VideoAspect(str, Enum):
     portrait = "9:16"
     square = "1:1"
 
-    def to_resolution(self):
+    def to_resolution(self, quality="1080p"):
+        w, h = 1920, 1080
         if self == VideoAspect.landscape.value:
-            return 1920, 1080
+            w, h = 1920, 1080
         elif self == VideoAspect.portrait.value:
-            return 1080, 1920
+            w, h = 1080, 1920
         elif self == VideoAspect.square.value:
-            return 1080, 1080
-        return 1080, 1920
+            w, h = 1080, 1080
+
+        if quality == "2k":
+            w = int(w * 1.333)
+            h = int(h * 1.333)
+        elif quality == "720p":
+            w = int(w * 0.666)
+            h = int(h * 0.666)
+        
+        return w, h
 
 
 class _Config:
@@ -80,6 +89,8 @@ class VideoParams(BaseModel):
     video_concat_mode: Optional[VideoConcatMode] = VideoConcatMode.random.value
     video_transition_mode: Optional[VideoTransitionMode] = None
     video_clip_duration: Optional[int] = 5
+    video_quality: Optional[str] = "1080p"  # 2k, 1080p, 720p
+    video_fps: Optional[int] = 30
     video_count: Optional[int] = 1
 
     video_source: Optional[str] = "pexels"
