@@ -39,6 +39,7 @@ from app.services import semantic_video
 # High-quality video encoding settings
 audio_codec = "aac"
 video_codec = "libx264"
+audio_bitrate = "192k"
 
 def get_quality_params(params: VideoParams = None):
     # Default high quality settings
@@ -53,6 +54,8 @@ def get_quality_params(params: VideoParams = None):
         logger.info("🚀 GPU detected! Using hardware acceleration (h264_nvenc) for ultra-fast rendering.")
     else:
         logger.info("💻 Using CPU for rendering (libx264).")
+    
+    res_audio_bitrate = audio_bitrate # default 192k
 
     if params:
         if hasattr(params, "video_fps") and params.video_fps:
@@ -67,7 +70,13 @@ def get_quality_params(params: VideoParams = None):
             res_preset = "medium" if not use_gpu else "p4"
         elif quality == "720p":
             res_bitrate = "4000k"
+            res_audio_bitrate = "128k"
             res_preset = "fast" if not use_gpu else "p2"
+        elif quality == "fast":
+            res_bitrate = "3000k"
+            res_audio_bitrate = "128k"
+            res_preset = "ultrafast" if not use_gpu else "p1"
+            res_crf = 23
         
         # Override preset if it's very high fps
         if res_fps > 30 and not use_gpu:
@@ -95,7 +104,7 @@ def get_quality_params(params: VideoParams = None):
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart"
         ]
-    return res_fps, res_bitrate, q_params, codec
+    return res_fps, res_bitrate, q_params, codec, res_audio_bitrate
 
 class SubClippedVideoClip:
     def __init__(self, file_path, start_time=None, end_time=None, width=None, height=None, duration=None):
@@ -196,7 +205,7 @@ def combine_videos(
     req_dur = max_clip_duration
     logger.info(f"maximum clip duration: {req_dur} seconds")
     output_dir = os.path.dirname(combined_video_path)
-    fps, bitrate, quality_params, video_codec = get_quality_params(params)
+    fps, bitrate, quality_params, video_codec, audio_bitrate = get_quality_params(params)
 
     aspect = VideoAspect(video_aspect)
     video_width, video_height = aspect.to_resolution(quality=getattr(params, "video_quality", "1080p"))
@@ -914,7 +923,7 @@ def generate_video(
     output_file: str,
     params: VideoParams,
 ):
-    fps, bitrate, quality_params, video_codec = get_quality_params(params)
+    fps, bitrate, quality_params, video_codec, audio_bitrate = get_quality_params(params)
     aspect = VideoAspect(params.video_aspect)
     video_width, video_height = aspect.to_resolution(quality=getattr(params, "video_quality", "1080p"))
 

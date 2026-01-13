@@ -864,6 +864,7 @@ with main_tabs[0]:
                 ("2K (Ultra HD - Slowest)", "2k"),
                 ("1080p (Full HD - High Quality)", "1080p"),
                 ("720p (HD - Fast)", "720p"),
+                ("⚡ Super Fast (Lower Quality - Best for Drafts)", "fast"),
             ]
         
             selected_q_idx = st.selectbox(
@@ -1344,9 +1345,17 @@ with main_tabs[0]:
         st.success(tr("Video Generation Completed"))
         try:
             if video_files:
-                player_cols = st.columns(len(video_files) * 2 + 1)
-                for i, url in enumerate(video_files):
-                    player_cols[i * 2 + 1].video(url)
+                for i, file_path in enumerate(video_files):
+                    st.write(f"### Video {i+1}")
+                    st.video(file_path)
+                    with open(file_path, "rb") as f:
+                        st.download_button(
+                            label=f"⬇️ {tr('Download Video')} {i+1}",
+                            data=f,
+                            file_name=os.path.basename(file_path),
+                            mime="video/mp4",
+                            key=f"download_video_{task_id}_{i}"
+                        )
         except Exception:
             pass
 
@@ -1413,7 +1422,16 @@ with main_tabs[1]:
                     full_logs = log # The generator returns the full log string
                     lite_log_container.code(full_logs)
                     if result and os.path.exists(result):
+                        st.write("### 🎬 Final Video")
                         lite_video_container.video(result)
+                        with open(result, "rb") as f:
+                            st.download_button(
+                                label="⬇️ Download Lite Video",
+                                data=f,
+                                file_name="lite_video.mp4",
+                                mime="video/mp4",
+                                key=f"download_lite_{utils.get_uuid()}"
+                            )
                         st.success("Lite Video Generated Successfully!")
             
             import asyncio
