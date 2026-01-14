@@ -98,10 +98,11 @@ async def generate_lite_video(
                 return None, f"[{get_time()}] ❌ Scene {i+1} Error: Audio generation failed"
                 
             a_clip = AudioFileClip(a_path)
-            if not a_clip or not hasattr(a_clip, 'duration') or a_clip.duration <= 0:
-                return None, f"[{get_time()}] ❌ Scene {i+1} Error: Invalid audio duration"
+            dur = getattr(a_clip, 'duration', 0)
+            if not a_clip or dur <= 0:
+                return None, f"[{get_time()}] ❌ Scene {i+1} Error: Invalid audio duration (0s)"
                 
-            msg += f" | Audio: {a_clip.duration:.2f}s"
+            msg += f" | Audio: {dur:.2f}s"
 
             # Video Procurement
             headers = {"Authorization": pexels_api_key}

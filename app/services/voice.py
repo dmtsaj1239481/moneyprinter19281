@@ -1202,6 +1202,7 @@ def trim_silence_from_audio(audio_file: str):
         cmd = [
             'ffmpeg', '-y', '-i', audio_file,
             '-af', 'silenceremove=start_periods=1:start_threshold=-45dB,silenceremove=stop_periods=1:stop_threshold=-45dB',
+            '-c:a', 'libmp3lame', '-q:a', '2',
             temp_file
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)

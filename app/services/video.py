@@ -119,6 +119,29 @@ def get_quality_params(params: VideoParams = None):
         
     return res_fps, res_bitrate, q_params, codec, res_audio_bitrate
 
+def safe_write_videofile(clip, filename, **kwargs):
+    """Write a video file with automatic fallback from GPU to CPU encoding if needed."""
+    original_codec = kwargs.get("codec")
+    original_params = kwargs.get("ffmpeg_params", [])
+    
+    try:
+        clip.write_videofile(filename, **kwargs)
+    except Exception as e:
+        err_str = str(e).lower()
+        gpu_error = any(x in err_str for x in ["nvenc", "encoder not found", "broken pipe", "unknown encoder"])
+        
+        if original_codec == "h264_nvenc" and gpu_error:
+            logger.warning(f"🚀 GPU Encoding failed ({original_codec}), falling back to software (libx264)...")
+            kwargs["codec"] = "libx264"
+            # Remove GPU-only params that might clash with libx264
+            if "ffmpeg_params" in kwargs:
+                kwargs["ffmpeg_params"] = [p for p in original_params if p not in ["-rc", "vbr", "-cq:v"]]
+            
+            # Re-try with software encoder
+            clip.write_videofile(filename, **kwargs)
+        else:
+            raise e
+
 class SubClippedVideoClip:
     def __init__(self, file_path, start_time=None, end_time=None, width=None, height=None, duration=None):
         self.file_path = file_path
@@ -437,9 +460,10 @@ def combine_videos(
                 if clip.duration > max_clip_duration:
                     clip = clip.subclipped(0, max_clip_duration)
                     
-                # wirte clip to temp file
+                # write clip to temp file
                 clip_file = f"{output_dir}/temp-clip-{i+1}.mp4"
-                clip.write_videofile(
+                safe_write_videofile(
+                    clip,
                     clip_file, 
                     logger=None, 
                     fps=fps, 
@@ -1148,7 +1172,8 @@ def generate_video(
             logger.error(f"failed to add bgm: {str(e)}")
 
     video_clip = video_clip.with_audio(audio_clip)
-    video_clip.write_videofile(
+    safe_write_videofile(
+        video_clip,
         output_file,
         audio_codec=audio_codec,
         temp_audiofile_path=output_dir,
@@ -1239,7 +1264,8 @@ def preprocess_video(materials: List[MaterialInfo], clip_duration=4):
 
             # Output the video to a file.
             video_file = f"{material.url}.mp4"
-            final_clip.write_videofile(
+            safe_write_videofile(
+                final_clip,
                 video_file, 
                 fps=fps, 
                 logger=None,
