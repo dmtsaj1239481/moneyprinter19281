@@ -128,14 +128,36 @@ def safe_write_videofile(clip, filename, **kwargs):
         clip.write_videofile(filename, **kwargs)
     except Exception as e:
         err_str = str(e).lower()
-        gpu_error = any(x in err_str for x in ["nvenc", "encoder not found", "broken pipe", "unknown encoder"])
+        gpu_error = any(x in err_str for x in ["nvenc", "encoder not found", "broken pipe", "unknown encoder", "invalid preset"])
         
         if original_codec == "h264_nvenc" and gpu_error:
             logger.warning(f"🚀 GPU Encoding failed ({original_codec}), falling back to software (libx264)...")
             kwargs["codec"] = "libx264"
-            # Remove GPU-only params that might clash with libx264
+            
+            # Map and filter params for libx264
             if "ffmpeg_params" in kwargs:
-                kwargs["ffmpeg_params"] = [p for p in original_params if p not in ["-rc", "vbr", "-cq:v"]]
+                new_params = []
+                preset_mapping = {"p1": "ultrafast", "p2": "faster", "p3": "fast", "p4": "medium", "p5": "slow", "p6": "slower", "p7": "veryslow"}
+                
+                i = 0
+                while i < len(original_params):
+                    param = original_params[i]
+                    if param == "-preset":
+                        new_params.append(param)
+                        if i + 1 < len(original_params):
+                            val = original_params[i + 1]
+                            new_params.append(preset_mapping.get(val, "ultrafast"))
+                            i += 2
+                        else:
+                            new_params.append("ultrafast")
+                            i += 1
+                    elif param in ["-rc", "-cq:v"]:
+                        # Skip the flag and its next value
+                        i += 2
+                    else:
+                        new_params.append(param)
+                        i += 1
+                kwargs["ffmpeg_params"] = new_params
             
             # Re-try with software encoder
             clip.write_videofile(filename, **kwargs)

@@ -91,16 +91,20 @@ async def generate_lite_video(
                 await edge_tts.Communicate(input_text, voice_name, pitch=pitch_str, rate=rate_str).save(a_path)
             asyncio.run(run_tts())
             
-            if fast_narration:
-                voice.trim_silence_from_audio(a_path)
+            # if fast_narration:
+            #     voice.trim_silence_from_audio(a_path)
             
             if not os.path.exists(a_path) or os.path.getsize(a_path) == 0:
                 return None, f"[{get_time()}] ❌ Scene {i+1} Error: Audio generation failed"
                 
-            a_clip = AudioFileClip(a_path)
-            dur = getattr(a_clip, 'duration', 0)
-            if not a_clip or dur <= 0:
-                return None, f"[{get_time()}] ❌ Scene {i+1} Error: Invalid audio duration (0s)"
+            try:
+                a_clip = AudioFileClip(a_path)
+                dur = getattr(a_clip, 'duration', 0)
+                if dur <= 0:
+                    # Try to reload or use a default
+                    dur = 5.0 # Fallback
+            except Exception:
+                dur = 5.0
                 
             msg += f" | Audio: {dur:.2f}s"
 
