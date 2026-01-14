@@ -94,8 +94,6 @@ def get_quality_params(params: VideoParams = None):
             "-preset", res_preset,
             "-pix_fmt", "yuv420p",
             "-profile:v", "high",
-            "-rc", "vbr",
-            "-cq:v", str(res_crf),
             "-b:v", res_bitrate,
             "-maxrate:v", res_bitrate,
             "-bufsize:v", str(int(res_bitrate.replace('k',''))*2) + "k"

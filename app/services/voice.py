@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from typing import Union
 from xml.sax.saxutils import unescape
+import subprocess
 
 # Suppress warnings and handle CUDA library conflicts
 import warnings
@@ -1154,6 +1155,7 @@ def tts(
     voice_rate: float,
     voice_file: str,
     voice_volume: float = 1.0,
+    fast_narration: bool = False,
 ) -> Union[SubMaker, None]:
     if is_azure_v2_voice(voice_name):
         return azure_tts_v2(text, voice_name, voice_file)
@@ -1178,8 +1180,38 @@ def tts(
         # Chatterbox TTS with WhisperX timestamps
         # 格式: chatterbox:type:name-Gender
         return chatterbox_tts(text, voice_name, voice_rate, voice_file, voice_volume)
-    return azure_tts_v1(text, voice_name, voice_rate, voice_file)
+    return azure_tts_v1(text, voice_name, voice_rate, voice_file, fast_narration=fast_narration)
 
+
+def make_text_breathless(text: str) -> str:
+    """Optimize text for breathless, non-stop flow by reducing punctuation pauses."""
+    # Replace full stops, exclamations, and questions with commas
+    # Commas typically have ~300ms pause vs ~1s for periods
+    text = text.replace(".", ",").replace("!", ",").replace("?", ",")
+    # Remove extra whitespace
+    text = " ".join(text.split())
+    return text
+
+def trim_silence_from_audio(audio_file: str):
+    """Trim leading and trailing silence from an audio file using FFmpeg"""
+    try:
+        import subprocess
+        temp_file = audio_file.replace(".mp3", "_trimmed.mp3")
+        # FFmpeg command to remove silence from both ends
+        # -45dB is a safe threshold for most TTS
+        cmd = [
+            'ffmpeg', '-y', '-i', audio_file,
+            '-af', 'silenceremove=start_periods=1:start_threshold=-45dB,silenceremove=stop_periods=1:stop_threshold=-45dB',
+            temp_file
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+        
+        if os.path.exists(temp_file):
+            os.remove(audio_file)
+            os.rename(temp_file, audio_file)
+            logger.info(f"Trimmed silence from {audio_file}")
+    except Exception as e:
+        logger.warning(f"Silence trimming failed: {e}")
 
 def convert_rate_to_percent(rate: float) -> str:
     if rate == 1.0:
@@ -1192,10 +1224,17 @@ def convert_rate_to_percent(rate: float) -> str:
 
 
 def azure_tts_v1(
-    text: str, voice_name: str, voice_rate: float, voice_file: str
+    text: str, voice_name: str, voice_rate: float, voice_file: str, fast_narration: bool = False
 ) -> Union[SubMaker, None]:
     voice_name = parse_voice_name(voice_name)
     text = text.strip()
+    
+    if fast_narration:
+        logger.info("🚀 Breathless Mode Active: Optimizing script for non-stop flow...")
+        text = make_text_breathless(text)
+        # Increase rate slightly if not already high
+        if voice_rate < 1.1: voice_rate = 1.1
+
     rate_str = convert_rate_to_percent(voice_rate)
     for i in range(3):
         try:

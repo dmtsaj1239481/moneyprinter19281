@@ -516,13 +516,22 @@ with main_tabs[0]:
                 ],  # The label is displayed to the user
             )
             params.video_language = video_languages[selected_index][1]
+            
+            params.narration_style = st.text_area(
+                tr("Narration Style Instruction"), 
+                value=params.narration_style,
+                help=tr("Example: Role: Energetic YouTube Storyteller / Edutainment Narrator. Tone: Engaging, slightly dramatic, fast-paced but clear... make sure to read it Breathless, and in Non-stop flow"),
+                placeholder=tr("Describe the voice personality or delivery style here...")
+            )
 
             if st.button(
                 tr("Generate Video Script and Keywords"), key="auto_generate_script"
             ):
                 with st.spinner(tr("Generating Video Script and Keywords")):
                     script = llm.generate_script(
-                        video_subject=params.video_subject, language=params.video_language
+                        video_subject=params.video_subject, 
+                        language=params.video_language,
+                        narration_style=params.narration_style
                     )
                     terms = llm.generate_terms(params.video_subject, script)
                     if "Error: " in script:
@@ -904,6 +913,11 @@ with main_tabs[0]:
                     tr("Enable Cinematic B-Roll Overlays"), 
                     value=False, 
                     help=tr("Overlays decorative footage like dust or light leaks for a premium texture.")
+                )
+                params.fast_narration = st.checkbox(
+                    tr("Fast Narrator (Non-stop)"), 
+                    value=False, 
+                    help=tr("Removes pauses between sentences and makes the voice flow continuously.")
                 )
         
             # Estimated time calculation
@@ -1415,6 +1429,13 @@ with main_tabs[1]:
             lite_rate = st.slider("Speech Rate (x)", 0.5, 2.0, 1.0, 0.1)
         with ls_col3:
             lite_pitch = st.slider("Pitch (Hz)", -50, 50, 0, 1)
+        
+        lite_fast_narration = st.checkbox(
+            tr("Fast Narrator (Non-stop)"), 
+            value=False, 
+            help=tr("Removes pauses between sentences and makes the voice flow continuously."),
+            key="lite_fast_narration"
+        )
 
     if st.button("🚀 GENERATE LITE VIDEO", type="primary"):
         if not lite_script:
@@ -1440,7 +1461,8 @@ with main_tabs[1]:
                     video_aspect=lite_aspect,
                     voice_rate=lite_rate,
                     voice_pitch=lite_pitch,
-                    pexels_api_key=lite_pexels_key
+                    pexels_api_key=lite_pexels_key,
+                    fast_narration=lite_fast_narration
                 ):
                     full_logs = log # The generator returns the full log string
                     lite_log_container.code(full_logs)

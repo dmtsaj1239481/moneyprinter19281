@@ -296,7 +296,7 @@ def _generate_response(prompt: str) -> str:
 
 
 def generate_script(
-    video_subject: str, language: str = "", paragraph_number: int = 1, include_emojis: bool = False
+    video_subject: str, language: str = "", paragraph_number: int = 1, include_emojis: bool = False, narration_style: str = ""
 ) -> str:
     prompt = f"""
 # Role: Video Script Generator
@@ -314,8 +314,12 @@ Generate a script for a video, depending on the subject of the video.
 7. you must not mention the prompt, or anything about the script itself. also, never talk about the amount of paragraphs or lines. just write the script.
 8. respond in the same language as the video subject.
 """
+    if narration_style:
+        prompt += f"\n9. Voice style or Persona instructions: {narration_style}\n"
+    
     if include_emojis:
-        prompt += "9. You MUST include relevant emojis in the script to make it more engaging.\n"
+        num = 10 if narration_style else 9
+        prompt += f"{num}. You MUST include relevant emojis in the script to make it more engaging.\n"
 
     prompt += f"""
 # Initialization:

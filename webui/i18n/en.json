@@ -138,7 +138,11 @@
     "Enable Cinematic B-Roll Overlays": "Enable Cinematic B-Roll Overlays",
     "Overlays decorative footage like dust or light leaks for a premium texture.": "Overlays decorative footage like dust or light leaks for a premium texture.",
     "CrossFade (Smooth)": "CrossFade (Smooth)",
+    "Fast Narrator (Non-stop)": "Fast Narrator (Non-stop)",
+    "Removes pauses between sentences and makes the voice flow continuously.": "Removes pauses between sentences and makes the voice flow continuously.",
+    "Narration Style Instruction": "Narration Style Instruction",
+    "Describe the voice personality or delivery style here...": "Describe the voice personality or delivery style here...",
     "Hormozi Style (Big, Bold, Yellow Highlight)": "Hormozi Style (Big, Bold, Yellow Highlight)",
-    "Visual Enhancements": "**Visual Enhancements**"
+    "Visual Enhancements": "Visual Enhancements"
   }
 }

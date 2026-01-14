@@ -131,6 +131,8 @@ class VideoParams(BaseModel):
     enable_broll: Optional[bool] = False
     force_cfr: Optional[bool] = True
     ultra_fast_render: Optional[bool] = False
+    fast_narration: Optional[bool] = False
+    narration_style: Optional[str] = ""
     
     # Semantic video settings
     segmentation_method: Optional[str] = "sentences"

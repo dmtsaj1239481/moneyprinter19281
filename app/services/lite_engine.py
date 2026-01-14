@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import List, Generator
 from app.utils import utils
 from app.config import config
-from app.services import llm
+from app.services import llm, voice
 
 def get_time(): 
     return datetime.now().strftime("%H:%M:%S")
@@ -48,6 +48,7 @@ async def generate_lite_video(
     voice_rate: float = 1.0,
     voice_pitch: int = 0,
     pexels_api_key: str = "",
+    fast_narration: bool = False,
 ) -> Generator:
     
     start_time = time.time()
@@ -84,8 +85,14 @@ async def generate_lite_video(
             pitch_str = f"{'+' if voice_pitch >= 0 else ''}{voice_pitch}Hz"
             
             async def run_tts():
-                await edge_tts.Communicate(sent, voice_name, pitch=pitch_str, rate=rate_str).save(a_path)
+                input_text = sent
+                if fast_narration:
+                    input_text = voice.make_text_breathless(sent)
+                await edge_tts.Communicate(input_text, voice_name, pitch=pitch_str, rate=rate_str).save(a_path)
             asyncio.run(run_tts())
+            
+            if fast_narration:
+                voice.trim_silence_from_audio(a_path)
             
             a_clip = AudioFileClip(a_path)
             msg += f" | Audio: {a_clip.duration:.2f}s"
