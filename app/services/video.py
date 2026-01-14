@@ -959,6 +959,26 @@ def create_enhanced_subtitle_clips(enhanced_subtitle_path, params, video_width, 
     return text_clips
 
 
+from proglog import ProgressBarLogger
+
+class DetailedProgressLogger(ProgressBarLogger):
+    """Custom MoviePy logger that redirects progress to loguru and calculates estimates"""
+    def __init__(self):
+        super().__init__()
+        self.last_update = 0
+        self.start_time = 0
+        
+    def callback(self, **kwargs):
+        bar = kwargs.get('bar', '??')
+        index = kwargs.get('index', 0)
+        total = kwargs.get('total', 1)
+        
+        # Only log every 5% to avoid flooding the UI
+        percent = int((index / total) * 100)
+        if percent % 5 == 0 and percent != self.last_update:
+            self.last_update = percent
+            logger.info(f"🔨 [Render Progress] {bar}: {percent}% ({index}/{total} frames)")
+
 def generate_video(
     video_path: str,
     audio_path: str,
@@ -971,11 +991,13 @@ def generate_video(
     aspect = VideoAspect(params.video_aspect)
     video_width, video_height = aspect.to_resolution(quality=getattr(params, "video_quality", "1080p"))
 
-    logger.info(f"generating video: {video_width} x {video_height}")
-    logger.info(f"  ① video: {video_path}")
-    logger.info(f"  ② audio: {audio_path}")
-    logger.info(f"  ③ subtitle: {subtitle_path}")
-    logger.info(f"  ④ output: {output_file}")
+    logger.info(f"🎬 Starting Final Render: {video_width}x{video_height} @ {fps}fps")
+    logger.debug(f"  📂 Source Video: {video_path}")
+    logger.debug(f"  🎵 Source Audio: {audio_path}")
+    logger.debug(f"  📝 Subtitles: {subtitle_path}")
+    logger.debug(f"  🎯 Output File: {output_file}")
+    
+    # ... (rest of function)
 
     # https://github.com/harry0703/MoneyPrinterTurbo/issues/217
     # PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'final-1.mp4.tempTEMP_MPY_wvf_snd.mp3'
@@ -1129,7 +1151,7 @@ def generate_video(
         audio_codec=audio_codec,
         temp_audiofile_path=output_dir,
         threads=params.n_threads or 2,
-        logger=None,
+        logger=DetailedProgressLogger(),
         fps=fps,
         codec=video_codec,
         bitrate=bitrate,
