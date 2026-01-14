@@ -821,15 +821,16 @@ with main_tabs[0]:
                 (tr("FadeOut"), VideoTransitionMode.fade_out.value),
                 (tr("SlideIn"), VideoTransitionMode.slide_in.value),
                 (tr("SlideOut"), VideoTransitionMode.slide_out.value),
+                (tr("CrossFade (Smooth)"), VideoTransitionMode.fade_cross.value),
             ]
-            selected_index = st.selectbox(
+            selected_transition_index = st.selectbox(
                 tr("Video Transition Mode"),
                 options=range(len(video_transition_modes)),
                 format_func=lambda x: video_transition_modes[x][0],
                 index=0,
             )
             params.video_transition_mode = VideoTransitionMode(
-                video_transition_modes[selected_index][1]
+                video_transition_modes[selected_transition_index][1]
             )
 
             video_aspect_ratios = [
@@ -882,6 +883,28 @@ with main_tabs[0]:
                 value=30,
                 help="60fps gives smoother video but doubles the rendering time."
             )
+            
+            # Sub-panel for speed and extra effects
+            st.write("---")
+            st.write(f"**{tr('Performance & Visual Toggles')}**")
+            p_col1, p_col2 = st.columns(2)
+            with p_col1:
+                params.ultra_fast_render = st.checkbox(
+                    tr("Ultra Fast Rendering"), 
+                    value=False, 
+                    help=tr("Use 'ultrafast' preset for rendering. Greatly speeds up generation but slightly increases file size.")
+                )
+                params.force_cfr = st.checkbox(
+                    tr("Force Constant Frame Rate"), 
+                    value=True, 
+                    help=tr("Prevents audio-video desync. Highly recommended for long videos.")
+                )
+            with p_col2:
+                params.enable_broll = st.checkbox(
+                    tr("Enable Cinematic B-Roll Overlays"), 
+                    value=False, 
+                    help=tr("Overlays decorative footage like dust or light leaks for a premium texture.")
+                )
         
             # Estimated time calculation
             script_len = len(params.video_script.split()) if params.video_script else 0

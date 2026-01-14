@@ -125,6 +125,16 @@
     "Minimum image similarity score required for video-text matching": "视频文本匹配所需的最小图像相似度分数",
     "Image Similarity Model": "图像相似度模型",
     "CLIP model for text-image similarity comparison": "用于文本图像相似度比较的CLIP模型",
-    "Image similarity analyzes video thumbnails and preview frames to find videos that visually match the script content.": "图像相似度分析视频缩略图和预览帧，找到与脚本内容视觉匹配的视频。"
+    "Image similarity analyzes video thumbnails and preview frames to find videos that visually match the script content.": "图像相似度分析视频缩略图和预览帧，找到与脚本内容视觉匹配的视频。",
+    "Performance & Visual Toggles": "**性能与视觉切换**",
+    "Ultra Fast Rendering": "超快速渲染",
+    "Use 'ultrafast' preset for rendering. Greatly speeds up generation but slightly increases file size.": "使用 'ultrafast' 预设进行渲染。大幅加快生成速度，但会稍微增加文件大小。",
+    "Force Constant Frame Rate": "强制固定帧率 (CFR)",
+    "Prevents audio-video desync. Highly recommended for long videos.": "防止音画不同步。强烈建议长视频开启。",
+    "Enable Cinematic B-Roll Overlays": "启用电影感 B-Roll 叠加",
+    "Overlays decorative footage like dust or light leaks for a premium texture.": "叠加装饰性素材（如尘埃或漏光），提升质感。",
+    "CrossFade (Smooth)": "交叉淡入淡出（平滑）",
+    "Hormozi Style (Big, Bold, Yellow Highlight)": "Hormozi 风格（大标题，加粗，黄色高亮）",
+    "Visual Enhancements": "**视觉增强**"
   }
 }

@@ -129,6 +129,16 @@
     "Minimum image similarity score required for video-text matching": "Minimum image similarity score required for video-text matching",
     "Image Similarity Model": "Image Similarity Model",
     "CLIP model for text-image similarity comparison": "CLIP model for text-image similarity comparison",
-    "Image similarity analyzes video thumbnails and preview frames to find videos that visually match the script content.": "Image similarity analyzes video thumbnails and preview frames to find videos that visually match the script content."
+    "Image similarity analyzes video thumbnails and preview frames to find videos that visually match the script content.": "Image similarity analyzes video thumbnails and preview frames to find videos that visually match the script content.",
+    "Performance & Visual Toggles": "**Performance & Visual Toggles**",
+    "Ultra Fast Rendering": "Ultra Fast Rendering",
+    "Use 'ultrafast' preset for rendering. Greatly speeds up generation but slightly increases file size.": "Use 'ultrafast' preset for rendering. Greatly speeds up generation but slightly increases file size.",
+    "Force Constant Frame Rate": "Force Constant Frame Rate (CFR)",
+    "Prevents audio-video desync. Highly recommended for long videos.": "Prevents audio-video desync. Highly recommended for long videos.",
+    "Enable Cinematic B-Roll Overlays": "Enable Cinematic B-Roll Overlays",
+    "Overlays decorative footage like dust or light leaks for a premium texture.": "Overlays decorative footage like dust or light leaks for a premium texture.",
+    "CrossFade (Smooth)": "CrossFade (Smooth)",
+    "Hormozi Style (Big, Bold, Yellow Highlight)": "Hormozi Style (Big, Bold, Yellow Highlight)",
+    "Visual Enhancements": "**Visual Enhancements**"
   }
 }

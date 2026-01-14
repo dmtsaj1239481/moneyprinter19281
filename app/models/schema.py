@@ -26,6 +26,7 @@ class VideoTransitionMode(str, Enum):
     fade_out = "FadeOut"
     slide_in = "SlideIn"
     slide_out = "SlideOut"
+    fade_cross = "FadeCross"
 
 
 class VideoAspect(str, Enum):
@@ -127,6 +128,9 @@ class VideoParams(BaseModel):
     # Visual enhancements
     enable_emojis: Optional[bool] = False
     hormozi_style: Optional[bool] = False
+    enable_broll: Optional[bool] = False
+    force_cfr: Optional[bool] = True
+    ultra_fast_render: Optional[bool] = False
     
     # Semantic video settings
     segmentation_method: Optional[str] = "sentences"

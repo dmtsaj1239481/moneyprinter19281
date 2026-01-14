@@ -19,3 +19,12 @@ def slidein_transition(clip: Clip, t: float, side: str) -> Clip:
 # SlideOut
 def slideout_transition(clip: Clip, t: float, side: str) -> Clip:
     return clip.with_effects([vfx.SlideOut(t, side)])
+
+
+# CrossFade
+def crossfadein_transition(clip: Clip, t: float) -> Clip:
+    return clip.with_effects([vfx.CrossFadeIn(t)])
+
+
+def crossfadeout_transition(clip: Clip, t: float) -> Clip:
+    return clip.with_effects([vfx.CrossFadeOut(t)])

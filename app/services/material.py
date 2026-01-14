@@ -219,6 +219,23 @@ def save_video(video_url: str, save_dir: str = "", search_term: str = "", thumbn
     return ""
 
 
+def download_broll_materials(
+    task_id: str,
+    video_aspect: VideoAspect = VideoAspect.portrait,
+    audio_duration: float = 0.0,
+) -> List[str]:
+    """Download decorative B-roll overlays like dust or light leaks"""
+    broll_terms = ["dust particles overlay", "light leaks overlay", "film grain overlay", "vintage film overlay"]
+    # We only need 1 or 2 long clips to cover the video
+    return download_videos(
+        task_id=task_id,
+        search_terms=broll_terms,
+        audio_duration=audio_duration,
+        max_clip_duration=30, # Longer clips for overlays
+        video_aspect=video_aspect
+    )
+
+
 def download_videos(
     task_id: str,
     search_terms: List[str],

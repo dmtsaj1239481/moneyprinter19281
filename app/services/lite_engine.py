@@ -48,58 +48,31 @@ async def generate_lite_video(
     
     final_clips = []
     
-    # 2. Process each sentence
-    for i, sent in enumerate(sentences):
-        scene_log = f"\n🎬 --- SCENE {i+1}/{len(sentences)} ---\n"
-        logs += scene_log
-        yield None, logs
-        
-        # Keyword Extraction
+    # 2. Process all scenes in parallel for ultra-fast speed
+    from concurrent.futures import ThreadPoolExecutor
+    
+    def process_scene(i, sent):
         try:
-            logs += f"[{get_time()}] 🧠 Keyword Extraction...\n"
-            yield None, logs
+            # Keyword Extraction
+            kw_terms = llm.generate_terms(video_subject, sent, amount=1)
+            kw = kw_terms[0] if kw_terms else "nature"
             
-            # Use the existing LLM service to get a keyword
-            # We ask for only 1 search term
-            terms = llm.generate_terms(video_subject, sent, amount=1)
-            if isinstance(terms, list) and len(terms) > 0:
-                kw = terms[0]
-            else:
-                kw = "nature"
-                
-            logs += f"[{get_time()}] ✅ Keyword: '{kw}'\n"
-            yield None, logs
-        except Exception as e:
-            logger.error(f"Lite Engine LLM error: {e}")
-            kw = "nature"
+            # Audio Generation
+            a_path = os.path.join(temp_dir, f"audio_{i}.mp3")
+            rate_percent = round((voice_rate - 1.0) * 100)
+            rate_str = f"{'+' if rate_percent >= 0 else ''}{rate_percent}%"
+            pitch_str = f"{'+' if voice_pitch >= 0 else ''}{voice_pitch}Hz"
+            
+            # We run the async TTS in a synchronous wrapper for the thread pool
+            async def run_tts():
+                await edge_tts.Communicate(sent, voice_name, pitch=pitch_str, rate=rate_str).save(a_path)
+            
+            asyncio.run(run_tts())
+            a_clip = AudioFileClip(a_path)
 
-        # Audio Generation (Edge-TTS)
-        logs += f"[{get_time()}] 🎙️ Generating Audio...\n"
-        yield None, logs
-        a_path = os.path.join(temp_dir, f"audio_{i}.mp3")
-        
-        # Convert rate to edge_tts format e.g. "+0%"
-        rate_percent = round((voice_rate - 1.0) * 100)
-        rate_str = f"{'+' if rate_percent >= 0 else ''}{rate_percent}%"
-        pitch_str = f"{'+' if voice_pitch >= 0 else ''}{voice_pitch}Hz"
-        
-        await edge_tts.Communicate(sent, voice_name, pitch=pitch_str, rate=rate_str).save(a_path)
-        a_clip = AudioFileClip(a_path)
-
-        # Video Procurement (Pexels)
-        logs += f"[{get_time()}] ⬇️ Downloading 720p Footage...\n"
-        yield None, logs
-        
-        if not pexels_api_key:
-            pexels_api_keys = config.app.get("pexels_api_keys", [])
-            if pexels_api_keys:
-                pexels_api_key = pexels_api_keys[0]
-        
-        headers = {"Authorization": pexels_api_key}
-        # orientation maps to pexels orientation: "landscape", "portrait" or "square"
-        orientation = "landscape" if video_aspect == "landscape" else "portrait"
-        
-        try:
+            # Video Procurement
+            headers = {"Authorization": pexels_api_key}
+            orientation = "landscape" if video_aspect == "landscape" else "portrait"
             search_url = f"https://api.pexels.com/videos/search?query={kw}&per_page=1&orientation={orientation}"
             res = requests.get(search_url, headers=headers).json()
             
@@ -109,32 +82,32 @@ async def generate_lite_video(
                 with open(v_path, 'wb') as f:
                     f.write(requests.get(v_url).content)
                 
-                # Processing with MoviePy
-                logs += f"[{get_time()}] ✂️ Processing Clip...\n"
-                yield None, logs
-                
                 v_clip = VideoFileClip(v_path)
                 
-                # Loop video if it's shorter than audio
+                # Loop or crop to match audio
                 if v_clip.duration < a_clip.duration:
                     v_clip = v_clip.loop(duration=a_clip.duration)
                 else:
                     v_clip = v_clip.subclipped(0, a_clip.duration)
                 
-                # Resize to target
+                # Resize and attach audio
                 w_target, h_target = (1280, 720) if video_aspect == "landscape" else (720, 1280)
                 v_clip = v_clip.resized(new_size=(w_target, h_target)).with_audio(a_clip)
-                final_clips.append(v_clip)
-                
-                logs += f"[{get_time()}] ✅ Scene {i+1} processed\n"
-                yield None, logs
-            else:
-                logs += f"[{get_time()}] ⚠️ No video found for '{kw}'\n"
-                yield None, logs
+                return v_clip
+            return None
         except Exception as e:
-            logger.error(f"Lite Engine Pexels/Video error: {e}")
-            logs += f"[{get_time()}] ❌ Error processing scene {i+1}: {str(e)}\n"
-            yield None, logs
+            logger.error(f"Error in scene {i}: {e}")
+            return None
+
+    logs += f"[{get_time()}] ⚡ Processing all scenes in parallel...\n"
+    yield None, logs
+    
+    with ThreadPoolExecutor(max_workers=min(len(sentences), 8)) as executor:
+        results = list(executor.map(lambda x: process_scene(*x), enumerate(sentences)))
+    
+    final_clips = [c for c in results if c is not None]
+    logs += f"[{get_time()}] ✅ Processed {len(final_clips)}/{len(sentences)} scenes successfully.\n"
+    yield None, logs
 
     # 3. Final Export
     if final_clips:
@@ -144,14 +117,24 @@ async def generate_lite_video(
         
         try:
             final_video = concatenate_videoclips(final_clips, method="compose")
-            # Using ultrafast as requested
+            
+            # Using ultrafast as requested and forcing CFR for compatibility
+            # This matches the standard engine's FFmpeg optimizations
+            ffmpeg_params = [
+                "-preset", "ultrafast",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-r", "30"  # Force 30 FPS Constant Frame Rate
+            ]
+            
             final_video.write_videofile(
                 final_output, 
                 fps=30, 
                 codec="libx264", 
-                preset='ultrafast', 
+                audio_codec="aac",
                 logger=None,
-                threads=4
+                threads=4,
+                ffmpeg_params=ffmpeg_params
             )
             
             # Cleanup

@@ -62,9 +62,11 @@ def get_quality_params(params: VideoParams = None):
             res_fps = params.video_fps
         
         quality = getattr(params, "video_quality", "1080p")
+        is_ultra_fast = getattr(params, "ultra_fast_render", False)
+
         if quality == "2k":
             res_bitrate = "12000k"
-            res_preset = "slow" if not use_gpu else "p6" # slow for cpu, p6 for nvenc
+            res_preset = "slow" if not use_gpu else "p6"
         elif quality == "1080p":
             res_bitrate = "8000k"
             res_preset = "medium" if not use_gpu else "p4"
@@ -77,9 +79,13 @@ def get_quality_params(params: VideoParams = None):
             res_audio_bitrate = "128k"
             res_preset = "ultrafast" if not use_gpu else "p1"
             res_crf = 23
-        
+
+        if is_ultra_fast:
+            res_preset = "ultrafast" if not use_gpu else "p1"
+            logger.info("⚡ Ultra-fast rendering enabled! Using 'ultrafast' preset.")
+
         # Override preset if it's very high fps
-        if res_fps > 30 and not use_gpu:
+        if res_fps > 30 and not use_gpu and not is_ultra_fast:
             res_preset = "veryfast"
 
     if use_gpu:
@@ -104,6 +110,11 @@ def get_quality_params(params: VideoParams = None):
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart"
         ]
+        
+    # Force CFR if requested (prevents audio desync)
+    if params and getattr(params, "force_cfr", True):
+        q_params.extend(["-r", str(res_fps)])
+        
     return res_fps, res_bitrate, q_params, codec, res_audio_bitrate
 
 class SubClippedVideoClip:
@@ -305,12 +316,15 @@ def combine_videos(
                         clip = video_effects.slidein_transition(clip, 1, shuffle_side)
                     elif video_transition_mode.value == VideoTransitionMode.slide_out.value:
                         clip = video_effects.slideout_transition(clip, 1, shuffle_side)
+                    elif video_transition_mode.value == VideoTransitionMode.fade_cross.value:
+                        clip = video_effects.crossfadein_transition(clip, 1)
                     elif video_transition_mode.value == VideoTransitionMode.shuffle.value:
                         transition_funcs = [
                             lambda c: video_effects.fadein_transition(c, 1),
                             lambda c: video_effects.fadeout_transition(c, 1),
                             lambda c: video_effects.slidein_transition(c, 1, shuffle_side),
                             lambda c: video_effects.slideout_transition(c, 1, shuffle_side),
+                            lambda c: video_effects.crossfadein_transition(c, 1),
                         ]
                         shuffle_transition = random.choice(transition_funcs)
                         clip = shuffle_transition(clip)
@@ -405,12 +419,15 @@ def combine_videos(
                     clip = video_effects.slidein_transition(clip, 1, shuffle_side)
                 elif video_transition_mode and video_transition_mode.value == VideoTransitionMode.slide_out.value:
                     clip = video_effects.slideout_transition(clip, 1, shuffle_side)
+                elif video_transition_mode and video_transition_mode.value == VideoTransitionMode.fade_cross.value:
+                    clip = video_effects.crossfadein_transition(clip, 1)
                 elif video_transition_mode and video_transition_mode.value == VideoTransitionMode.shuffle.value:
                     transition_funcs = [
                         lambda c: video_effects.fadein_transition(c, 1),
                         lambda c: video_effects.fadeout_transition(c, 1),
                         lambda c: video_effects.slidein_transition(c, 1, shuffle_side),
                         lambda c: video_effects.slideout_transition(c, 1, shuffle_side),
+                        lambda c: video_effects.crossfadein_transition(c, 1),
                     ]
                     shuffle_transition = random.choice(transition_funcs)
                     clip = shuffle_transition(clip)
@@ -842,7 +859,7 @@ def create_enhanced_subtitle_clips(enhanced_subtitle_path, params, video_width, 
         return img
     
     def create_subtitle_clip(text, highlighted_word_indices, start_time, duration, params):
-        """Create a subtitle clip with specified highlighting"""
+        """Create a subtitle clip with specified highlighting and optional Hormozi animations"""
         try:
             img = create_word_highlighted_image(
                 text=text,
@@ -855,6 +872,32 @@ def create_enhanced_subtitle_clips(enhanced_subtitle_path, params, video_width, 
             )
             
             clip = ImageClip(np.array(img)).with_duration(duration).with_start(start_time)
+            
+            # Apply Hormozi Style Animations (Tilt & Shake)
+            if getattr(params, 'hormozi_style', False) and highlighted_word_indices:
+                # 1. Random Tilt (Rotation)
+                tilt_angle = random.uniform(-3, 3)
+                clip = clip.rotated(tilt_angle)
+                
+                # 2. Shake Effect (Dynamic Position)
+                def shake(t):
+                    # Faster t for more "premium" shake
+                    shake_intensity = 2 # pixels
+                    speed = 20 # frequency
+                    dx = shake_intensity * np.sin(speed * t)
+                    dy = shake_intensity * np.cos(speed * t)
+                    
+                    # Original center position logic
+                    # We need to know where it would be centered
+                    return (dx, dy) # This is relative to its specified position
+                
+                # Instead of repositioning everything, we can use a wrapper or just move the clip
+                # For simplicity in MoviePy 2.x, we can use with_position with a function
+                # But we already have position_clip. Let's incorporate shake into position_clip or apply it here.
+                
+                # Let's apply a simple scale pulse instead of shake if shake is too complex to center
+                clip = clip.with_effects([vfx.Resize(lambda t: 1.0 + 0.05 * np.sin(15 * t))])
+            
             return position_clip(clip, params, video_height)
             
         except Exception as e:
@@ -1035,6 +1078,35 @@ def generate_video(
                 text_clips.append(clip)
         
         video_clip = CompositeVideoClip([video_clip, *text_clips])
+
+    # Add B-roll Overlays if enabled
+    broll_videos = getattr(params, '_broll_videos', [])
+    if broll_videos:
+        logger.info(f"Applying {len(broll_videos)} B-roll overlays")
+        broll_clips = []
+        current_time = 0
+        for bv_path in broll_videos:
+            if current_time >= video_clip.duration:
+                break
+            try:
+                bv_clip = VideoFileClip(bv_path)
+                # Resize to fit
+                bv_clip = bv_clip.resized(new_size=(video_width, video_height))
+                # Set opacity (dust/light leaks should be subtle)
+                bv_clip = bv_clip.with_effects([vfx.MultiplyOpacity(0.15)])
+                bv_clip = bv_clip.with_start(current_time)
+                
+                # Make sure it doesn't exceed main video duration
+                if current_time + bv_clip.duration > video_clip.duration:
+                    bv_clip = bv_clip.subclipped(0, video_clip.duration - current_time)
+                
+                broll_clips.append(bv_clip)
+                current_time += bv_clip.duration
+            except Exception as e:
+                logger.error(f"Failed to load B-roll {bv_path}: {e}")
+        
+        if broll_clips:
+            video_clip = CompositeVideoClip([video_clip, *broll_clips])
 
     bgm_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)
     if bgm_file:

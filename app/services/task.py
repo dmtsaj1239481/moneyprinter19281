@@ -180,6 +180,19 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
             audio_duration=audio_duration * params.video_count,
             max_clip_duration=params.video_clip_duration,
         )
+        
+        # Download B-roll if enabled
+        if getattr(params, 'enable_broll', False):
+            logger.info("## downloading B-roll decorative clips")
+            broll_videos = material.download_broll_materials(
+                task_id=task_id,
+                video_aspect=params.video_aspect,
+                audio_duration=audio_duration
+            )
+            if broll_videos:
+                params._broll_videos = broll_videos
+                logger.info(f"Downloaded {len(broll_videos)} B-roll clips")
+
         if not downloaded_videos:
             sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
             logger.error(
