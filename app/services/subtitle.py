@@ -555,3 +555,30 @@ def _balance_subtitle_lines(lines, max_chars_per_line):
         balanced_lines.append(line)
     
     return balanced_lines
+def slice_subtitle(subtitle_path: str, start_time: float, end_time: float, output_path: str):
+    """Slice an SRT subtitle file to a specific time range and reset start time to 0"""
+    items = file_to_subtitles(subtitle_path)
+    sliced_items = []
+    
+    for idx, time_range, text in items:
+        # Time range is in "00:00:00,000 --> 00:00:00,000" format
+        start_str, end_str = time_range.split(" --> ")
+        
+        def srt_to_seconds(s):
+            h, m, s_ms = s.split(":")
+            s_val, ms_val = s_ms.split(",")
+            return int(h) * 3600 + int(m) * 60 + int(s_val) + int(ms_val) / 1000.0
+            
+        s_val = srt_to_seconds(start_str)
+        e_val = srt_to_seconds(end_str)
+        
+        if s_val >= start_time and e_val <= end_time:
+            # Adjust times relative to start_time
+            new_s = s_val - start_time
+            new_e = e_val - start_time
+            sliced_items.append((len(sliced_items) + 1, new_s, new_e, text))
+            
+    with open(output_path, "w", encoding="utf-8") as f:
+        for i, s_val, e_val, text in sliced_items:
+            f.write(utils.text_to_srt(i, text, s_val, e_val))
+    return output_path

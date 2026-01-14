@@ -965,6 +965,7 @@ def generate_video(
     subtitle_path: str,
     output_file: str,
     params: VideoParams,
+    skip_bgm: bool = False,
 ):
     fps, bitrate, quality_params, video_codec, audio_bitrate = get_quality_params(params)
     aspect = VideoAspect(params.video_aspect)
@@ -1109,7 +1110,7 @@ def generate_video(
             video_clip = CompositeVideoClip([video_clip, *broll_clips])
 
     bgm_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)
-    if bgm_file:
+    if bgm_file and not skip_bgm:
         try:
             bgm_clip = AudioFileClip(bgm_file).with_effects(
                 [
@@ -1137,6 +1138,41 @@ def generate_video(
     )
     video_clip.close()
     del video_clip
+
+def concat_videos_ffmpeg(video_paths: List[str], output_path: str):
+    """Concatenate multiple videos using FFmpeg demuxer (copy mode)"""
+    import subprocess
+    
+    # Create temp list file
+    list_path = output_path.replace(".mp4", "_list.txt")
+    with open(list_path, "w", encoding="utf-8") as f:
+        for p in video_paths:
+            # FFmpeg needs absolute paths or relative to the list file
+            # Use absolute to be safe
+            abs_p = os.path.abspath(p).replace("\\", "/")
+            f.write(f"file '{abs_p}'\n")
+    
+    try:
+        cmd = [
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", list_path, "-c", "copy", output_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+    finally:
+        if os.path.exists(list_path):
+            os.remove(list_path)
+def add_bgm_to_video(video_path: str, bgm_path: str, bgm_volume: float, output_path: str):
+    """Add BGM to a finished video using FFmpeg (more stable for long videos)"""
+    import subprocess
+    
+    # Use ffmpeg complex filter to loop and mix audio
+    # volume filter for secondary input (bgm)
+    cmd = [
+        "ffmpeg", "-y", "-i", video_path, "-stream_loop", "-1", "-i", bgm_path,
+        "-filter_complex", f"[1:a]volume={bgm_volume}[music];[0:a][music]amix=inputs=2:duration=first[aout]",
+        "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-shortest", output_path
+    ]
+    subprocess.run(cmd, check=True, capture_output=True)
 
 
 def preprocess_video(materials: List[MaterialInfo], clip_duration=4):

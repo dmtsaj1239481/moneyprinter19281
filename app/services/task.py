@@ -203,17 +203,18 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
 
 
 def generate_final_videos(
-    task_id, params, downloaded_videos, audio_file, subtitle_path, video_script=""
+    task_id, params, downloaded_videos, audio_file, subtitle_path, video_script="", audio_duration=0
 ):
     final_video_paths = []
     combined_video_paths = []
     
-    # Force random mode for multiple videos to ensure variety
-    # Semantic mode would produce identical videos, which doesn't make sense for multiple generation
+    # Chunking logic for long videos (> 5 mins) to save memory on Colab T4
+    CHUNK_THRESHOLD = 300 # 5 minutes
+    is_long_video = audio_duration > CHUNK_THRESHOLD
+    
     video_concat_mode = params.video_concat_mode
     if params.video_count > 1 and video_concat_mode.value == "semantic":
         logger.info(f"🔄 Multiple videos requested ({params.video_count}), forcing random concatenation mode for variety")
-        logger.info("   ℹ️  Semantic mode would produce identical videos, which is not useful for multiple generation")
         video_concat_mode = VideoConcatMode.random
     
     video_transition_mode = params.video_transition_mode
@@ -221,42 +222,112 @@ def generate_final_videos(
     _progress = 50
     for i in range(params.video_count):
         index = i + 1
-        combined_video_path = path.join(
-            utils.task_dir(task_id), f"combined-{index}.mp4"
-        )
-        logger.info(f"\n\n## combining video: {index} => {combined_video_path}")
-        video.combine_videos(
-            combined_video_path=combined_video_path,
-            video_paths=downloaded_videos,
-            audio_file=audio_file,
-            video_aspect=params.video_aspect,
-            video_concat_mode=video_concat_mode,
-            video_transition_mode=video_transition_mode,
-            max_clip_duration=params.video_clip_duration,
-            threads=params.n_threads,
-            script=video_script,
-            params=params,
-        )
-
-        _progress += 50 / params.video_count / 2
-        sm.state.update_task(task_id, progress=_progress)
-
         final_video_path = path.join(utils.task_dir(task_id), f"final-{index}.mp4")
+        
+        if is_long_video:
+            logger.info(f"📦 LONG VIDEO DETECTED ({audio_duration}s). Using Smart Chunking Rendering...")
+            chunk_duration = 300 # 5 minute chunks
+            total_chunks = math.ceil(audio_duration / chunk_duration)
+            chunk_files = []
+            
+            for c_idx in range(total_chunks):
+                t_start = c_idx * chunk_duration
+                t_end = min((c_idx + 1) * chunk_duration, audio_duration)
+                chunk_logger_info = f"Chapter {c_idx+1}/{total_chunks} ({t_start}s -> {t_end}s)"
+                logger.info(f"🎬 Processing {chunk_logger_info}")
+                
+                # Temp paths for chunk
+                c_audio = path.join(utils.task_dir(task_id), f"audio_c{c_idx}.mp3")
+                c_sub = path.join(utils.task_dir(task_id), f"sub_c{c_idx}.srt")
+                c_combined = path.join(utils.task_dir(task_id), f"combined_c{c_idx}.mp4")
+                c_final = path.join(utils.task_dir(task_id), f"final_c{c_idx}.mp4")
+                
+                # Extract Audio & Subtitle segments
+                try:
+                    from moviepy import AudioFileClip
+                    AudioFileClip(audio_file).subclipped(t_start, t_end).write_audiofile(c_audio, logger=None)
+                    subtitle.slice_subtitle(subtitle_path, t_start, t_end, c_sub)
+                    
+                    # Process chunk video
+                    video.combine_videos(
+                        combined_video_path=c_combined,
+                        video_paths=downloaded_videos,
+                        audio_file=c_audio,
+                        video_aspect=params.video_aspect,
+                        video_concat_mode=video_concat_mode,
+                        video_transition_mode=video_transition_mode,
+                        max_clip_duration=params.video_clip_duration,
+                        threads=params.n_threads,
+                        script=video_script,
+                        params=params,
+                    )
+                    
+                    video.generate_video(
+                        video_path=c_combined,
+                        audio_path=c_audio,
+                        subtitle_path=c_sub,
+                        output_file=c_final,
+                        params=params,
+                        skip_bgm=True # Important for seamless audio
+                    )
+                    chunk_files.append(c_final)
+                except Exception as e:
+                    logger.error(f"Failed to process chunk {c_idx}: {e}")
+                
+            # Merge all chunks with FFmpeg (Copy mode - extremely memory efficient)
+            if chunk_files:
+                logger.info("🧵 Merging all chapters into final video...")
+                temp_merged = final_video_path.replace(".mp4", "_merged_no_bgm.mp4")
+                video.concat_videos_ffmpeg(chunk_files, temp_merged)
+                
+                # Apply BGM to final merged file if needed
+                from app.services.video import get_bgm_file, add_bgm_to_video
+                bgm_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)
+                if bgm_file:
+                    logger.info("🎵 Adding Background Music to final long video...")
+                    add_bgm_to_video(temp_merged, bgm_file, params.bgm_volume, final_video_path)
+                    if os.path.exists(temp_merged): os.remove(temp_merged)
+                else:
+                    os.rename(temp_merged, final_video_path)
+                    
+                final_video_paths.append(final_video_path)
+            
+        else:
+            # Original Single Render Logic
+            combined_video_path = path.join(
+                utils.task_dir(task_id), f"combined-{index}.mp4"
+            )
+            logger.info(f"\n\n## combining video: {index} => {combined_video_path}")
+            video.combine_videos(
+                combined_video_path=combined_video_path,
+                video_paths=downloaded_videos,
+                audio_file=audio_file,
+                video_aspect=params.video_aspect,
+                video_concat_mode=video_concat_mode,
+                video_transition_mode=video_transition_mode,
+                max_clip_duration=params.video_clip_duration,
+                threads=params.n_threads,
+                script=video_script,
+                params=params,
+            )
 
-        logger.info(f"\n\n## generating video: {index} => {final_video_path}")
-        video.generate_video(
-            video_path=combined_video_path,
-            audio_path=audio_file,
-            subtitle_path=subtitle_path,
-            output_file=final_video_path,
-            params=params,
-        )
+            _progress += 50 / params.video_count / 2
+            sm.state.update_task(task_id, progress=_progress)
 
-        _progress += 50 / params.video_count / 2
-        sm.state.update_task(task_id, progress=_progress)
+            logger.info(f"\n\n## generating video: {index} => {final_video_path}")
+            video.generate_video(
+                video_path=combined_video_path,
+                audio_path=audio_file,
+                subtitle_path=subtitle_path,
+                output_file=final_video_path,
+                params=params,
+            )
 
-        final_video_paths.append(final_video_path)
-        combined_video_paths.append(combined_video_path)
+            _progress += 50 / params.video_count / 2
+            sm.state.update_task(task_id, progress=_progress)
+
+            final_video_paths.append(final_video_path)
+            combined_video_paths.append(combined_video_path)
 
     return final_video_paths, combined_video_paths
 
@@ -378,7 +449,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
     # 6. Generate final videos
     final_video_paths, combined_video_paths = generate_final_videos(
-        task_id, params, downloaded_videos, audio_file, subtitle_path, video_script
+        task_id, params, downloaded_videos, audio_file, subtitle_path, video_script, audio_duration
     )
 
     if not final_video_paths:
@@ -402,6 +473,24 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
     sm.state.update_task(
         task_id, state=const.TASK_STATE_COMPLETE, progress=100, **kwargs
     )
+    
+    # Colab Compatibility: Auto-sync to Google Drive if available
+    try:
+        drive_path = "/content/drive/MyDrive/MoneyPrinterTurbo"
+        if os.path.exists("/content/drive"):
+            if not os.path.exists(drive_path):
+                os.makedirs(drive_path)
+            
+            import shutil
+            for v_path in final_video_paths:
+                dest = os.path.join(drive_path, os.path.basename(v_path))
+                # Add task_id to prevent overwrites
+                dest = dest.replace(".mp4", f"_{task_id}.mp4")
+                shutil.copy2(v_path, dest)
+                logger.info(f"💾 Persistent backup saved to Google Drive: {dest}")
+    except Exception as e:
+        logger.warning(f"Google Drive sync failed: {e}")
+
     return kwargs
 
 
