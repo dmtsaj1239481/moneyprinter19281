@@ -89,12 +89,12 @@ def get_quality_params(params: VideoParams = None):
             res_preset = "veryfast"
 
     if use_gpu:
-        # NVENC specific parameters
+        # NVENC specific parameters - using more compatible flags
         q_params = [
             "-preset", res_preset,
-            "-pixel_format", "yuv420p",
+            "-pix_fmt", "yuv420p",
             "-profile:v", "high",
-            "-rc:v", "vbr",
+            "-rc", "vbr",
             "-cq:v", str(res_crf),
             "-b:v", res_bitrate,
             "-maxrate:v", res_bitrate,
