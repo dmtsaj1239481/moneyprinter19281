@@ -49,9 +49,13 @@ def get_quality_params(params: VideoParams = None):
     res_crf = 18
     
     use_gpu = utils.has_gpu()
-    codec = "h264_nvenc" if use_gpu else "libx264"
-    if use_gpu:
-        logger.info("🚀 GPU detected! Using hardware acceleration (h264_nvenc) for ultra-fast rendering.")
+    use_nvenc = use_gpu and utils.has_encoder("h264_nvenc")
+    
+    codec = "h264_nvenc" if use_nvenc else "libx264"
+    if use_nvenc:
+        logger.info("🚀 GPU + NVENC detected! Using hardware acceleration for ultra-fast rendering.")
+    elif use_gpu:
+        logger.info("💻 GPU detected but h264_nvenc encoder is missing. Falling back to libx264.")
     else:
         logger.info("💻 Using CPU for rendering (libx264).")
     
@@ -66,29 +70,29 @@ def get_quality_params(params: VideoParams = None):
 
         if quality == "2k":
             res_bitrate = "12000k"
-            res_preset = "slow" if not use_gpu else "p6"
+            res_preset = "slow" if not use_nvenc else "p6"
         elif quality == "1080p":
             res_bitrate = "8000k"
-            res_preset = "medium" if not use_gpu else "p4"
+            res_preset = "medium" if not use_nvenc else "p4"
         elif quality == "720p":
             res_bitrate = "4000k"
             res_audio_bitrate = "128k"
-            res_preset = "fast" if not use_gpu else "p2"
+            res_preset = "fast" if not use_nvenc else "p2"
         elif quality == "fast":
             res_bitrate = "3000k"
             res_audio_bitrate = "128k"
-            res_preset = "ultrafast" if not use_gpu else "p1"
+            res_preset = "ultrafast" if not use_nvenc else "p1"
             res_crf = 23
 
         if is_ultra_fast:
-            res_preset = "ultrafast" if not use_gpu else "p1"
+            res_preset = "ultrafast" if not use_nvenc else "p1"
             logger.info("⚡ Ultra-fast rendering enabled! Using 'ultrafast' preset.")
 
         # Override preset if it's very high fps
-        if res_fps > 30 and not use_gpu and not is_ultra_fast:
+        if res_fps > 30 and not use_nvenc and not is_ultra_fast:
             res_preset = "veryfast"
 
-    if use_gpu:
+    if use_nvenc:
         # NVENC specific parameters - using more compatible flags
         q_params = [
             "-preset", res_preset,

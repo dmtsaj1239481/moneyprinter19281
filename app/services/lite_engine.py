@@ -94,7 +94,13 @@ async def generate_lite_video(
             if fast_narration:
                 voice.trim_silence_from_audio(a_path)
             
+            if not os.path.exists(a_path) or os.path.getsize(a_path) == 0:
+                return None, f"[{get_time()}] ❌ Scene {i+1} Error: Audio generation failed"
+                
             a_clip = AudioFileClip(a_path)
+            if not a_clip or not hasattr(a_clip, 'duration') or a_clip.duration <= 0:
+                return None, f"[{get_time()}] ❌ Scene {i+1} Error: Invalid audio duration"
+                
             msg += f" | Audio: {a_clip.duration:.2f}s"
 
             # Video Procurement
@@ -109,7 +115,13 @@ async def generate_lite_video(
                 with open(v_path, 'wb') as f:
                     f.write(requests.get(v_url).content)
                 
+                if not os.path.exists(v_path) or os.path.getsize(v_path) == 0:
+                    return None, f"[{get_time()}] ❌ Scene {i+1} Error: Video download failed"
+                    
                 v_clip = VideoFileClip(v_path)
+                if not v_clip or not hasattr(v_clip, 'duration') or v_clip.duration <= 0:
+                    return None, f"[{get_time()}] ❌ Scene {i+1} Error: Invalid video duration"
+                    
                 msg += f" | Pexels V: {v_clip.duration:.2f}s"
                 
                 if v_clip.duration < a_clip.duration:
@@ -125,7 +137,8 @@ async def generate_lite_video(
                 return v_clip, msg + f" | ✅ Done ({scene_end-scene_start:.1f}s)"
             return None, msg + " | ❌ No video found"
         except Exception as e:
-            logger.error(f"Error in scene {i}: {e}")
+            import traceback
+            logger.error(f"Error in scene {i}: {str(e)}\n{traceback.format_exc()}")
             return None, f"[{get_time()}] ❌ Scene {i+1} Error: {str(e)}"
 
     logs += f"[{get_time()}] ⚡ STAGE 1: Parallel Processing (Audio + Footage)..."

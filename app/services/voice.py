@@ -1204,12 +1204,20 @@ def trim_silence_from_audio(audio_file: str):
             '-af', 'silenceremove=start_periods=1:start_threshold=-45dB,silenceremove=stop_periods=1:stop_threshold=-45dB',
             temp_file
         ]
-        subprocess.run(cmd, capture_output=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
         
-        if os.path.exists(temp_file):
+        if result.returncode != 0:
+            logger.warning(f"FFmpeg silence trimming failed with exit code {result.returncode}: {result.stderr}")
+            return
+
+        if os.path.exists(temp_file) and os.path.getsize(temp_file) > 0:
             os.remove(audio_file)
             os.rename(temp_file, audio_file)
             logger.info(f"Trimmed silence from {audio_file}")
+        else:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+            logger.warning(f"Silence trimming resulted in empty file, keeping original for {audio_file}")
     except Exception as e:
         logger.warning(f"Silence trimming failed: {e}")
 

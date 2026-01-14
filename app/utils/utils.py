@@ -245,3 +245,18 @@ def has_gpu():
         except Exception:
             return False
     return False
+
+def has_encoder(encoder_name: str) -> bool:
+    """
+    Check if a specific FFmpeg encoder is available.
+    """
+    import shutil
+    import subprocess
+    
+    if shutil.which("ffmpeg"):
+        try:
+            output = subprocess.check_output(["ffmpeg", "-encoders"], stderr=subprocess.STDOUT).decode("utf-8")
+            return encoder_name in output
+        except Exception:
+            return False
+    return False
